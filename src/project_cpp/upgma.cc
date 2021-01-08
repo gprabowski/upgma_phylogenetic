@@ -123,35 +123,46 @@ decltype(auto) UPGMA(DM& dm) {
 	return clusters[0]->getTree();
 }
 
-string saveHelper(shared_ptr<Tree> root) {
+string saveHelper(shared_ptr<Tree> root, vector<string>& names) {
 	cout << root->getRootLength() << endl;
-	if(root->isLeaf()) return to_string(root->getLabel());	
-	return "("+ saveHelper(root->_left) + ":" + to_string(root->getRootLength() - root->getLeftRootLen()) + ","
-						   + saveHelper(root->_right) + ":" + to_string(root->getRootLength() - root->getRightRootLen()) + ")";
+	if(root->isLeaf()) return names[root->getLabel()];	
+	return "("+ saveHelper(root->_left, names) + ":" + to_string(root->getRootLength() - root->getLeftRootLen()) + ","
+						   + saveHelper(root->_right, names) + ":" + to_string(root->getRootLength() - root->getRightRootLen()) + ")";
 }
 
-void saveTree(shared_ptr<Tree> tree, string filename) {
+void saveTree(shared_ptr<Tree> tree, string filename, vector<string>& names) {
 	ofstream out;
 	out.open(filename);
-	out << saveHelper(tree) << flush;
+	out << saveHelper(tree, names) << flush;
 	out.close();
 }
 
 int main(int argc, char** argv) {
-	if(argc != 5) {
+	if(argc != 6) {
 		cout << "please provide num sequences, \n"
 				"delimiter symbol and \n "
 				"filename for distance matrix \n"
-			    " and the output tree filename"	<< endl;
+			    "the output tree filename \n"
+			    "and the filename with names of sequences \n"	<< endl;
 		exit(-1);
 	}
 	string line;
 	ifstream inp;
+	ifstream seqinp;
 	string distances = argv[3];
 	size_t pos;
 	auto size = stoi(argv[1]);
 	string delimiter = argv[2];
 	string _ofile = argv[4];
+	string seq_names = argv[5];
+	vector<string> names;
+	seqinp.open(seq_names);	
+	if(seqinp.is_open()) {
+		string temp = "";	
+		while(getline(seqinp, temp)) {
+			if(temp.size() > 1) names.push_back(temp);
+		}
+	}
 	int row = 0;
 	int column = 0;
 	DM dm(size);
@@ -170,6 +181,6 @@ int main(int argc, char** argv) {
 		}
 	}
 	auto res = UPGMA(dm);
-	saveTree(res, _ofile);
+	saveTree(res, _ofile, names);
 }
 
