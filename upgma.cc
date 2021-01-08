@@ -18,10 +18,10 @@ using namespace std;
  *				vector of indexes
  */
 
-using DM = vector<vector<int>>;
+using DM = vector<vector<float>>;
 
 struct Tree {
-	bool _leaf;
+	bool _leaf = false;
 	int _label;
 	float _rootLength;
 	shared_ptr<Tree> _left;
@@ -29,99 +29,105 @@ struct Tree {
 	Tree(int label) { 
 			_leaf = true;
 			_label = label;
+			_rootLength = 0.0f;
 	}
 	Tree(shared_ptr<Tree> a, shared_ptr<Tree> b, float score) {
 		_left = a;
 		_right = b;	
-		_rootLength = 0.5 * score;
+		_rootLength = 0.5f * score;
 	}
 	decltype(auto) isLeaf() { return _leaf; }
 	decltype(auto) getRootLength() { return _rootLength; }
 	decltype(auto) getLabel() { return _label; }
+	decltype(auto) getLeftRootLen() { return _rootLength - _left->getRootLength(); }
+	decltype(auto) getRightRootLen() { return _rootLength - _right->getRootLength(); }
 };
 	
 struct ClusterPair {
-	bool _single;
-	vector<int> _label;
 	int _size;
 	shared_ptr<Tree> _tree;
 	shared_ptr<ClusterPair> _a;
 	shared_ptr<ClusterPair> _b;
-	decltype(auto) isSingle() { return _single; }
 	decltype(auto) getTree() { return _tree; }
 	decltype(auto) first() { return _a; }
 	decltype(auto) second() { return _b; }
-	decltype(auto) getLabel() { return _label[0]; }
 	decltype(auto) getSize() { return _size; }
-	ClusterPair(int label) : _single(true) {
-		_label.push_back(label);
+	ClusterPair(int label) {
 		_size = 1;
 		_tree = make_shared<Tree>(label);	
 	} 
-	ClusterPair(shared_ptr<ClusterPair> a, shared_ptr<ClusterPair> b, float score) : _a(a), _b(b) {
-		auto av = a->getAllSequences();
-		auto bv = b->getAllSequences();
-		_label.insert(_label.end(), av.begin(), av.end());
-		_label.insert(_label.end(), bv.begin(), bv.end());
-		_single = false;
+	ClusterPair(shared_ptr<ClusterPair> a, shared_ptr<ClusterPair> b, float score) {
 		_size = a->getSize() + b->getSize();
 		this->_tree = make_shared<Tree>(a->getTree(), b->getTree(), score);
 	}
-	const vector<int>& getAllSequences() {
-			return _label;
-	}
 };
 
-decltype(auto) mergeClusters(shared_ptr<ClusterPair> a, shared_ptr<ClusterPair> b, float score) {
+inline decltype(auto) mergeClusters(shared_ptr<ClusterPair> a, shared_ptr<ClusterPair> b, float score) {
 	return make_shared<ClusterPair>(a, b, score);	
 }
 
-decltype(auto) calcScore(const DM& dm, shared_ptr<ClusterPair> c1, shared_ptr<ClusterPair> c2) {
-	float score = 0.0f;
-	auto av = c1->getAllSequences();	
-	auto bv = c2->getAllSequences();	
-	for(auto& elem_a : av) 
-			for(auto& elem_b : bv) {
-				score += dm[elem_a][elem_b];
-			}
-	return score / (c1->getSize() + c2->getSize());
+inline decltype(auto) calcScore(DM& dm, const vector<shared_ptr<ClusterPair>>& clusters, int c1, int c2) {
+	return dm[c1][c2];
 }
 
-decltype(auto) UPGMA(const DM& dm) {
-	const int s = dm.size();
+decltype(auto) UPGMA(DM& dm) {
 	float temp_score;
 	int best_i, best_j;
 	vector<shared_ptr<ClusterPair>> clusters;
 	shared_ptr<ClusterPair> a, b;
-	for(auto i = 0; i < s; ++i) {
+	for(auto i = 0; i < dm.size(); ++i) {
 		clusters.push_back(make_shared<ClusterPair>(i));
 	}
 	while(clusters.size() > 1) {
 		float minScore = numeric_limits<float>::max();
 		for(int i = clusters.size() - 1; i >= 0; --i) {
 			for(int j = 0; j < i; ++j) {
-				if((temp_score = calcScore(dm, clusters[i], clusters[j])) < minScore)	{
+				if(i == j) continue;
+				if((temp_score = dm[i][j]) < minScore)	{
 					a = clusters[i]; b = clusters[j]; minScore = temp_score;	
 					best_i = i; best_j = j;
 				}
 			}
 		}
-		// we have found the best suiting pair
+		dm.push_back(vector<float>(dm[0].size(), 0.0));
+		for(auto& vec : dm) {
+			vec.resize(vec.size() + 1, 0);
+		}
+		for(auto i = 0; i < dm.size(); ++i) {
+			if(i == best_i || i == best_j)
+					continue;
+			dm[dm.size() - 1][i] = ( a->getSize() * dm[best_i][i] + b->getSize() * dm[best_j][i] ) / (a->getSize() + b->getSize());
+        	dm[i][dm.size() - 1] = dm[dm.size() - 1][i];
+		}
+        // we have found the best suiting pair
 		// now we 
 		// 1) delete them from the vector
+		dm.erase(dm.begin() + best_i);
+		dm.erase(dm.begin() + best_j + (best_i < best_j) * (-1));
+		for(auto & elem : dm) {
+			elem.erase(elem.begin() + best_i);
+			elem.erase(elem.begin() + best_j + (best_i < best_j) * (-1));
+		}
 		clusters.erase(clusters.begin() + best_i);
-		clusters.erase(clusters.begin() + best_j);
+		clusters.erase(clusters.begin() + best_j + (best_i < best_j) * (-1));
 		// 2) merge them
 		// 3) insert in the end
 		clusters.push_back(mergeClusters(a, b, minScore));
+		for(auto& d : dm) {
+			for(auto& el : d) {
+				cout << " " << el << flush;
+			}
+			cout << endl;
+		}
 	}
 	return clusters[0]->getTree();
 }
 
 string saveHelper(shared_ptr<Tree> root) {
+	cout << root->getRootLength() << endl;
 	if(root->isLeaf()) return to_string(root->getLabel());	
-	return "("+ saveHelper(root->_left) + ":" + to_string(root->getRootLength()) + ","
-						   + saveHelper(root->_right) + ":" + to_string(root->getRootLength()) + ")";
+	return "("+ saveHelper(root->_left) + ":" + to_string(root->getRootLength() - root->getLeftRootLen()) + ","
+						   + saveHelper(root->_right) + ":" + to_string(root->getRootLength() - root->getRightRootLen()) + ")";
 }
 
 void saveTree(shared_ptr<Tree> tree, string filename) {
@@ -132,10 +138,11 @@ void saveTree(shared_ptr<Tree> tree, string filename) {
 }
 
 int main(int argc, char** argv) {
-	if(argc != 4) {
-		cout << "please provide  num sequences and \n"
+	if(argc != 5) {
+		cout << "please provide num sequences, \n"
 				"delimiter symbol and \n "
-				"filename for distance matrix" << endl;
+				"filename for distance matrix \n"
+			    " and the output tree filename"	<< endl;
 		exit(-1);
 	}
 	string line;
@@ -144,6 +151,7 @@ int main(int argc, char** argv) {
 	size_t pos;
 	auto size = stoi(argv[1]);
 	string delimiter = argv[2];
+	string _ofile = argv[4];
 	int row = 0;
 	int column = 0;
 	DM dm(size);
@@ -155,13 +163,13 @@ int main(int argc, char** argv) {
 		while( getline(inp, line)) {
 				column = 0;
 				while((pos = line.find(";")) != std::string::npos) {
-					dm[row][column++] = stoi(line.substr(0, pos));
+					dm[row][column++] = stof(line.substr(0, pos));
 					line.erase(0, pos + delimiter.length());
 				}
 				++row;
 		}
 	}
 	auto res = UPGMA(dm);
-	saveTree(res, "tree.newick");
+	saveTree(res, _ofile);
 }
 

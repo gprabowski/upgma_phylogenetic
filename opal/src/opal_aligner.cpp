@@ -174,18 +174,42 @@ int main(int argc, char * const argv[]) {
         // ---------------------------------------------------------------------------- //
         printf("\nFinished!\n");
 		std::ofstream ofs("avsa_results.txt", std::ofstream::out);
+		std::ofstream alignouts("avsa_edit_dist.txt", std::ofstream::out);
         if (!silent) {
             printf("\n#<i>: <score> (<query start>, <target start>) (<query end>, <target end>)\n");
             for (int i = 0; i < dbLength * dbLength; i++) {
-				ofs << results[i]->score << ";" << std::flush;
+			   	ofs << results[i]->score << ";" << std::flush;
 				if(i % dbLength == dbLength - 1) ofs << std::endl;
-                printf("#%d: %d", dbTotalLength - dbLength + i, results[i]->score);
-                if (results[i]->alignment) {
-                    printAlignment(query, queryLength, db[i], dbSeqLengths[i], *results[i], alphabet);
-                }
+				auto edit_dist = 0;
+				if(results[i]->alignment) {
+						/**
+						 * Alignment is sequence of operations:
+						 *  - OPAL_ALIGN_MATCH stands for match.
+						 *  - OPAL_ALIGN_DEL stands for deletion from query (insertion to target).
+						 *  - OPAL_ALIGN_INS stands for insertion to query (deletion from target).
+						 *  - OPAL_ALIGN_MISMATCH stands for mismatch.
+						 * Alignment aligns query to target from begining of query till end of query.
+						 * If gaps are not penalized, they are not in alignment.
+						 * Needed memory is allocated and given pointer is set to it.
+						 * Important: Do not forget to free memory allocated for alignment! Use free().
+						 */
+						
+						// count score based on each alignment
+						// OPAL_ALIGN_MATCH IS 0 EDIT DISTANCE
+						// OPAL_ALIGN_DEL IS 1 EDIT DISTANCE
+						// OPAL_ALIGN_INS IS 1 EDIT DISTANCE
+						// OPAL_ALIGN_MISMATCH IS 1 EDIT DISTANCE
+						for(auto j = 0; j < results[i]->alignmentLength; ++j) {
+							auto elem = results[i]->alignment[j];
+							edit_dist += static_cast<int>(elem == OPAL_ALIGN_DEL) + static_cast<int>(elem == OPAL_ALIGN_INS) + static_cast<int>(elem == OPAL_ALIGN_MISMATCH);
+						}
+				}
+				alignouts << edit_dist << ";" << std::flush;
+				if(i % dbLength == dbLength - 1) alignouts << std::endl;
             }
         }
 		ofs.close();
+		alignouts.close();
 
         for (int i = 0; i < dbLength; i++) {
             if (results[i]->alignment) {
@@ -297,43 +321,4 @@ bool readFastaSequences(FILE* &file, unsigned char* alphabet, int alphabetLength
     }
 
     return true;
-}
-
-
-void printAlignment(const unsigned char* query, const int queryLength,
-                    const unsigned char* target, const int targetLength,
-                    const OpalSearchResult result, const unsigned char* alphabet) {
-    int tIdx = result.startLocationTarget;
-    int qIdx = result.startLocationQuery;
-    /* What is this for?
-      if (modeCode == EDLIB_MODE_HW) {
-        tIdx = position;
-        for (int i = 0; i < alignmentLength; i++) {
-            if (alignment[i] != OPAL_ALIGN_DEL)
-                tIdx--;
-        }
-      }
-    */
-    for (int start = 0; start < result.alignmentLength; start += 50) {
-        // target
-        printf("T: ");
-        int startTIdx = tIdx;
-        for (int j = start; j < start + 50 && j < result.alignmentLength; j++) {
-            if (result.alignment[j] == OPAL_ALIGN_DEL)
-                printf("_");
-            else
-                printf("%c", alphabet[target[tIdx++]]);
-        }
-        printf(" (%d - %d)\n", max(startTIdx, 0), tIdx - 1);
-        // query
-        printf("Q: ");
-        int startQIdx = qIdx;
-        for (int j = start; j < start + 50 && j < result.alignmentLength; j++) {
-            if (result.alignment[j] == OPAL_ALIGN_INS)
-                printf("_");
-            else
-                printf("%c", alphabet[query[qIdx++]]);
-        }
-        printf(" (%d - %d)\n\n", max(startQIdx, 0), qIdx - 1);
-    }
 }
